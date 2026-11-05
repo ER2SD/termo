@@ -1,26 +1,34 @@
 /* USER CODE BEGIN Header */
 /**
-  ******************************************************************************
-  * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2026 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
+ ******************************************************************************
+ * @file           : main.c
+ * @brief          : Main program body
+ ******************************************************************************
+ * @attention
+ *
+ * Copyright (c) 2026 STMicroelectronics.
+ * All rights reserved.
+ *
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
+ *
+ ******************************************************************************
+ */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "string.h"
+#include "stdio.h"
+#include "ILI9341.h"
+#include "fonts.h"
+#include "touch.h"
+#include "screen.h"
+#include "nrf24.h"
+#include "button.h"
 
 /* USER CODE END Includes */
 
@@ -53,7 +61,40 @@ UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+char str1[64] =
+{ 0 };
+volatile int g_timer_seconds = 0;				//Начальное значение таймера
+uint8_t g_timer_settings_erudit = 10;			//Erudit timer from settings
+volatile uint8_t reset_timer = 0;				//старт/стоп таймера
+uint8_t timer_running = 0;   					//0 = стоп, 1 = работает
+uint8_t btn_prev = 1;        					//предыдущее состояние кнопки
+uint8_t question_id = 1;						//the current question index, for Erudit Quartet can be up to 5
+char lcd_buf[16];								//буфер значения таймера
+uint16_t teams = 2;								//номер команды
+uint16_t teams_answer_state[8] =
+{ 0 };											// Teams answer state
+uint16_t teams_fs_state[8] =
+{ 0 };											// Teams false start state
+uint16_t pressed_btn_team = 0;					//номер нажатой кнопки команды
+int16_t scores[8] = { 0 };						//количество очков команд [0-7]
+uint16_t answer = 1;							//положительный или отрицательный ответ
+uint8_t rx_data;								//номер нажатой кнопки передатчика
+uint16_t falstart_enabled = 0;
+uint8_t flag_press = 1;
+uint32_t time_press = 0;
+char buf[64] = { 0, };
+uint16_t x = 0;
+uint16_t y = 0;
+enum {
+	NONE = 0, SHORT = 1, LONG = 2
+};
 
+static volatile uint8_t  beep_active = 0;
+static volatile uint32_t beep_start_tick = 0;
+static volatile uint16_t beep_duration = 0;
+
+game_screen screen = MAIN_MENU;
+uint16_t edit_score = 0;						//Признак редактирования счёта...
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -69,10 +110,38 @@ static void MX_TIM2_Init(void);
 static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
 
+void Main_loop_header(void);
+void Main_loop_footer(void);
+// void Reset_state(void);
+void Left_button_handler(void);
+void Center_button_short_handler(void);
+void Center_button_long_handler(void);
+void Right_button_handler(void);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+void Set_PWM_Frequency(uint32_t frequency) {
+	uint32_t arr;
+	arr = (32000000 / frequency) - 1;
+	__HAL_TIM_SET_AUTORELOAD(&htim3, arr);
+	__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, (arr + 1) / 2);
+}
+
+
+void beep(uint32_t frequency, uint16_t duration_ms) {
+	if (beep_active) {
+		HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1);
+		beep_active = 0;
+	}
+	Set_PWM_Frequency(frequency);
+	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
+	beep_start_tick = HAL_GetTick();
+	beep_duration = duration_ms;
+	beep_active = 1;
+}
 
 /* USER CODE END 0 */
 
@@ -84,6 +153,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+	edit_score = 0;
 
   /* USER CODE END 1 */
 
@@ -113,18 +183,27 @@ int main(void)
   MX_USART2_UART_Init();
   MX_TIM2_Init();
   MX_TIM3_Init();
+  //HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
   /* USER CODE BEGIN 2 */
-
+	__HAL_SPI_ENABLE(DISP_SPI_PTR);
+	HAL_TIM_Base_Start_IT(&htim2);							//старт таймера обратного отсчёта
+	HAL_TIM_Base_Start(&htim3);									//Таймер для микросекундных задержек
+	ILI9341_Init();															//инициализация дисплея
+	NRF24_ini();																//инициализация NRF24
+	ILI9341_Set_Rotation(SCREEN_HORIZONTAL_2);	//установка ориентации экрана (варианты в файле ILI9341_GFX.h)
+	screen_menu();															//старт глвного экрана
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
-  {
+
+	while (1)
+	{
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-  }
+
+	}
   /* USER CODE END 3 */
 }
 
@@ -323,9 +402,8 @@ static void MX_SPI2_Init(void)
   hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
   hspi2.Init.CRCPolynomial = 10;
-  if (HAL_SPI_Init(&hspi2) != HAL_OK)
-  {
-    Error_Handler();
+  if (HAL_SPI_Init(&hspi2) != HAL_OK) {
+	  Error_Handler();
   }
   /* USER CODE BEGIN SPI2_Init 2 */
 
@@ -615,6 +693,266 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+void Main_loop_footer(void) {
+	switch (screen) {
+	case BRAIN_RING:
+		if (reset_timer) {
+			reset_timer = 0;
+			sprintf(lcd_buf, "%02d ", g_timer_seconds);
+			ILI9341_WriteString(230, 25, lcd_buf, Font_16x26, RED, MYFON); // вывод показаний таймера
+			switch(g_timer_seconds) {
+				case 10: { // check if 10 seconds left and notify it via sound
+					beep(3000, 700);
+					break;
+				}
+
+				default: {
+					break;
+				}
+			}
+		}
+		break;
+
+	case ERUDIT:
+		if (reset_timer) {
+			reset_timer = 0;
+			sprintf(lcd_buf, "%02d ", g_timer_seconds);
+			ILI9341_WriteString(230, 25, lcd_buf, Font_16x26, RED, MYFON); // show the current timer value
+		}
+
+		// display the current question id
+		sprintf(lcd_buf, "%02d ", question_id * 10);
+		ILI9341_WriteString(230, 75, lcd_buf, Font_16x26, GREEN, MYFON); // show the current question value
+
+		sprintf(lcd_buf, "%02d ", question_id);
+		ILI9341_WriteString(230, 120, lcd_buf, Font_16x26, WHITE, MYFON); // show the current question number
+		break;
+
+	default:
+		break;
+	}
+}
+
+void Reset_state(uint8_t redraw, uint8_t screen) {
+
+	// check here what type of the game is selected, set the max timer value based on it
+	timer_running = 0;
+
+	switch (screen) {
+	case BRAIN_RING:
+		g_timer_seconds = 60;
+		ILI9341_Draw_Filled_Rectangle_Coord(130, 220, 190, 240, WHITE);
+		ILI9341_WriteString(142, 225, "Start", Font_7x10, BLUE, WHITE);
+		break;
+
+	case ERUDIT:
+		g_timer_seconds = g_timer_settings_erudit;
+		ILI9341_Draw_Filled_Rectangle_Coord(130, 220, 190, 240, WHITE);
+		ILI9341_WriteString(142, 225, "Start", Font_7x10, BLUE, WHITE);
+		break;
+
+	default:
+		break;
+	}
+
+	reset_timer = 1;
+	answer = 1;
+	if (redraw) {
+		reset_color();
+		Reset_falstart_screen();
+	}
+	Reset_answer_state();
+	Reset_falstart_state();
+	pressed_btn_team = 0;
+	edit_score = 0;
+}
+
+void Left_button_handler(void)
+{
+	switch (screen)
+	{
+	case BRAIN_RING:
+		if (!timer_running || !pressed_btn_team)
+		{
+			return;
+		}
+
+		if (answer)
+		{
+			g_timer_seconds = 20;
+			reset_timer = 1;
+		}
+
+		timer_running = 0;
+		answer = 0;
+		button_event_handler();							//Если ответ не верный-команда выбывает (цвет надписи команды чёрный)
+		pressed_btn_team = 0;
+		break;
+	case SIMPLE:
+		if (!pressed_btn_team)
+		{
+			return;
+		}
+
+		answer = 0;
+		button_event_handler();
+		pressed_btn_team = 0;
+		break;
+	case ERUDIT:
+		if (!pressed_btn_team) {
+			return;
+		}
+
+		answer = 0;
+		beep(800, 800);
+		g_timer_seconds = g_timer_settings_erudit;
+		reset_timer = 1;
+		timer_running = 1;
+		button_event_handler();
+		pressed_btn_team = 0;
+		break;
+	default:
+		return;
+	}
+}
+
+void Center_button_short_handler(void) {
+	switch (screen) {
+		case BRAIN_RING:
+			if (pressed_btn_team) {	// already one team responded
+				return;
+			}
+
+			if(!timer_running) {
+				timer_running = 1;
+				NRF24_FlushRX();
+				HAL_TIM_Base_Start_IT(&htim2);
+				ILI9341_Draw_Filled_Rectangle_Coord(130, 220, 190, 240, WHITE);
+				ILI9341_WriteString(142, 225, "Stop", Font_7x10, BLUE, WHITE);
+			} else {
+				ILI9341_Draw_Filled_Rectangle_Coord(130, 220, 190, 240, WHITE);
+				ILI9341_WriteString(142, 225, "Start", Font_7x10, BLUE, WHITE);
+				timer_running = 0;
+				HAL_TIM_Base_Stop_IT(&htim2);
+			}
+
+			// also check here if the timer value is equal to 10 then beep
+			if(g_timer_seconds == 60) {
+				beep(800, 800);
+				LED_OFF;
+			}
+			break;
+		case SIMPLE:
+			break;
+
+		case ERUDIT:
+			// check if there is no other team answered
+			if (pressed_btn_team) {	// already one team responded
+				return;
+			}
+
+			if(!timer_running) {
+				timer_running = 1;
+				NRF24_FlushRX();
+				ILI9341_Draw_Filled_Rectangle_Coord(130, 220, 190, 240, WHITE);
+				ILI9341_WriteString(142, 225, "Stop", Font_7x10, BLUE, WHITE);
+				HAL_TIM_Base_Start_IT(&htim2);
+			} else {
+				timer_running = 0;
+				NRF24_FlushRX();
+				ILI9341_Draw_Filled_Rectangle_Coord(130, 220, 190, 240, WHITE);
+				ILI9341_WriteString(142, 225, "Start", Font_7x10, BLUE, WHITE);
+				HAL_TIM_Base_Stop_IT(&htim2);
+			}
+
+			// also check here if the timer value is equal to 10 then beep
+			if(g_timer_seconds == g_timer_settings_erudit) {
+				beep(800, 800);
+				LED_OFF;
+			}
+			break;
+		default:
+			return;
+	}
+}
+
+void Center_button_long_handler(void)
+{
+	switch (screen)
+	{
+	case BRAIN_RING:
+		NRF24_FlushRX();
+		LED_OFF;
+		HAL_TIM_Base_Stop_IT(&htim2);
+		Reset_state(1, screen);
+		break;
+	case SIMPLE:
+		NRF24_FlushRX();
+		LED_OFF;
+		Reset_state(1, screen);
+		break;
+	case ERUDIT:
+		NRF24_FlushRX();
+		LED_OFF;
+		HAL_TIM_Base_Stop_IT(&htim2);
+		Reset_state(1, screen);
+		break;
+	default:
+		return;
+	}
+}
+
+void Right_button_handler(void)
+{
+	switch (screen)
+	{
+	case BRAIN_RING:
+		if (!timer_running || !pressed_btn_team)
+		{
+			return;
+		}
+
+		answer = 1;																//Положительный или отрицательный ответ
+		button_event_handler();							//Если ответ не верный-команда выбывает (цвет надписи команды чёрный)
+		Reset_state(1, screen);
+		break;
+	case SIMPLE:
+		if (!pressed_btn_team){
+			return;
+		}
+
+		answer = 1;
+		button_event_handler();
+		Reset_state(1, screen);
+		break;
+	case ERUDIT:
+		if (!pressed_btn_team){
+			return;
+		}
+
+		answer = 1;
+		button_event_handler();
+		Reset_state(1, screen);
+		break;
+	default:
+		return;
+	}
+}
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+	if (htim->Instance == TIM2)
+	{
+		if (timer_running)
+		{
+			if (g_timer_seconds > 0)
+			{
+				g_timer_seconds--;
+			}
+		}
+		reset_timer = 1;
+	}
+}
 /* USER CODE END 4 */
 
 /**
@@ -624,11 +962,11 @@ static void MX_GPIO_Init(void)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
-  __disable_irq();
-  while (1)
-  {
-  }
+	/* User can add his own implementation to report the HAL error return state */
+	__disable_irq();
+	while (1)
+	{
+	}
   /* USER CODE END Error_Handler_Debug */
 }
 #ifdef USE_FULL_ASSERT

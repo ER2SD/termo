@@ -28,7 +28,11 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  ../Drivers/STM32L1xx_HAL_Driver/Inc/stm32l1xx_hal_tim.h \
  ../Drivers/STM32L1xx_HAL_Driver/Inc/stm32l1xx_hal_tim_ex.h \
  ../Drivers/STM32L1xx_HAL_Driver/Inc/stm32l1xx_hal_uart.h \
- ../Drivers/STM32L1xx_HAL_Driver/Inc/stm32l1xx_hal_exti.h
+ ../Drivers/STM32L1xx_HAL_Driver/Inc/stm32l1xx_hal_exti.h \
+ ../Core/Inc/ILI9341.h ../Core/Inc/main.h ../Core/Inc/fonts.h \
+ ../Core/Inc/screen.h ../Core/Inc/ILI9341.h ../Core/Inc/fonts.h \
+ ../Core/Inc/touch.h ../Core/Inc/screen.h ../Core/Inc/nrf24.h \
+ ../Core/Inc/button.h
 ../Core/Inc/main.h:
 ../Drivers/STM32L1xx_HAL_Driver/Inc/stm32l1xx_hal.h:
 ../Core/Inc/stm32l1xx_hal_conf.h:
@@ -60,3 +64,13 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Drivers/STM32L1xx_HAL_Driver/Inc/stm32l1xx_hal_tim_ex.h:
 ../Drivers/STM32L1xx_HAL_Driver/Inc/stm32l1xx_hal_uart.h:
 ../Drivers/STM32L1xx_HAL_Driver/Inc/stm32l1xx_hal_exti.h:
+../Core/Inc/ILI9341.h:
+../Core/Inc/main.h:
+../Core/Inc/fonts.h:
+../Core/Inc/screen.h:
+../Core/Inc/ILI9341.h:
+../Core/Inc/fonts.h:
+../Core/Inc/touch.h:
+../Core/Inc/screen.h:
+../Core/Inc/nrf24.h:
+../Core/Inc/button.h:

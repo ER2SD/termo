@@ -1,0 +1,6 @@
+../Core/Src/screen.c:29:20:draw_team_name	1
+../Core/Src/screen.c:36:6:show_coordinate_grid	3
+../Core/Src/screen.c:45:6:tournament_table	3
+../Core/Src/screen.c:52:6:tournament_table_simple	3
+../Core/Src/screen.c:59:6:reset_color	3
+../Core/Src/screen.c:69:6:screen_menu	1

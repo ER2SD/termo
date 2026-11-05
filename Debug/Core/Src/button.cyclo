@@ -1,0 +1,6 @@
+../Core/Src/button.c:49:9:Button_Read_left	4
+../Core/Src/button.c:68:9:Button_Read_center	11
+../Core/Src/button.c:132:9:Button_Read_right	4
+../Core/Src/button.c:151:6:Reset_answer_state	2
+../Core/Src/button.c:157:6:Reset_falstart_state	2
+../Core/Src/button.c:164:6:Touchscreen_handler	8

@@ -1,0 +1,6 @@
+../Core/Src/screen.c:29:20:draw_team_name	32	static
+../Core/Src/screen.c:36:6:show_coordinate_grid	16	static
+../Core/Src/screen.c:45:6:tournament_table	16	static
+../Core/Src/screen.c:52:6:tournament_table_simple	16	static
+../Core/Src/screen.c:59:6:reset_color	16	static
+../Core/Src/screen.c:69:6:screen_menu	24	static
